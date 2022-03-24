@@ -1,9 +1,13 @@
 kind: import
 
 sources:
-- kind: remote
-  url: github:windows-usb-launcher/releases/download/v3.9.2.0/Endless.Key.Launcher.exe
-  ref: e8ea8b2971771b19361cb7e64f75dcc9be41fd4ed76ab399b6ba0f02902d6f8a
+- kind: github_release
+  repo: endlessm/windows-usb-launcher
+  asset: Endless.Key.Launcher.exe
+  rename: "Endless Key Launcher.exe"
+
+  url: https://github.com/endlessm/windows-usb-launcher/releases/download/v3.9.2.0/Endless.Key.Launcher.exe
+  asset_id: '57240319'
 
 config:
   target: /

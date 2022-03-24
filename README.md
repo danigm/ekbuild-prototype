@@ -2,7 +2,7 @@
 
 ## Update references
 ```
-$ bst track software.bst
+$ bst track -d all software.bst
 ```
 
 ## Build
