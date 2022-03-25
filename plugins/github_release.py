@@ -17,41 +17,13 @@
 #        Daniel Garcia <danigm@endlessos.org>
 
 import os
-import re
 import shutil
-import tarfile
 import zipfile
-import stat
 import contextlib
 import urllib.request
 import json
-from datetime import datetime
 from buildstream import Source, SourceError, utils, Consistency
 
-def strip_top_dir(members, attr):
-    for member in members:
-        path = getattr(member, attr)
-        trail_slash = path.endswith('/')
-        path = path.rstrip('/')
-        splitted = getattr(member, attr).split('/', 1)
-        if len(splitted) == 2:
-            new_path = splitted[1]
-            if trail_slash:
-                new_path += '/'
-            setattr(member, attr, new_path)
-            yield member
-
-def make_key(item):
-    for download in item[1]:
-        if download['packagetype'] == 'sdist':
-            try:
-                date = datetime.strptime(download['upload_time_iso_8601'],
-                                         '%Y-%m-%dT%H:%M:%S.%fZ')
-            except ValueError:
-                date = datetime.strptime(download['upload_time_iso_8601'],
-                                             '%Y-%m-%dT%H:%M:%SZ')
-            return date
-    return datetime.fromtimestamp(0)
 
 class GithubReleaseSource(Source):
     def configure(self, node):
@@ -99,14 +71,15 @@ class GithubReleaseSource(Source):
 
     def track(self):
         # https://api.github.com/repos/REPO/releases/latest
-        github_api = f'https://api.github.com/repos/{self.repo}/releases/latest'
+        github_api = f'https://api.github.com/repos/{self.repo}/releases/latest'  # noqa: E501
         payload = json.loads(
             urllib.request.urlopen(github_api).read()
         )
         release = payload['name']
         assets = payload['assets']
         if not release:
-            raise SourceError(f'{self}: Cannot find any tracking for {self.name}')
+            raise SourceError(
+                f'{self}: Cannot find any tracking for {self.name}')
 
         found_ref = None
         for asset in assets:
@@ -119,7 +92,8 @@ class GithubReleaseSource(Source):
                 break
 
         if found_ref is None:
-            raise SourceError(f'{self}: Did not find any asset for {self.repo} {self.asset}')
+            raise SourceError(
+                f'{self}: Did not find any asset for {self.repo} {self.asset}')
 
         return found_ref
 
@@ -131,7 +105,8 @@ class GithubReleaseSource(Source):
                 request.add_header('Accept', '*/*')
                 request.add_header('User-Agent', 'BuildStream/1')
 
-                with contextlib.closing(urllib.request.urlopen(request)) as response:
+                urlopen = urllib.request.urlopen(request)
+                with contextlib.closing(urlopen) as response:
                     info = response.info()
                     filename = info.get_filename(default_name)
                     filename = os.path.basename(filename)
@@ -146,7 +121,9 @@ class GithubReleaseSource(Source):
                 os.rename(local_file, self._get_mirror_file(sha256))
                 return sha256
 
-        except (urllib.error.URLError, urllib.error.ContentTooShortError, OSError) as e:
+        except (urllib.error.URLError,
+                urllib.error.ContentTooShortError,
+                OSError) as e:
             raise SourceError(f"{self}: Error mirroring {self.url}: {e}",
                               temporary=True) from e
 
@@ -173,6 +150,7 @@ class GithubReleaseSource(Source):
     def _get_mirror_dir(self):
         return os.path.join(self.get_mirror_directory(),
                             utils.url_directory_name(self.name))
+
 
 def setup():
     return GithubReleaseSource

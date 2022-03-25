@@ -25,7 +25,6 @@ sources:
 
 config:
   install-commands:
-  - echo %{install-root}
   - mkdir -p %{install-root}/plugins
   - unzip -o -d %{install-root}/plugins kolibri_zim_plugin.zip
   - unzip -o -d %{install-root}/plugins/ kolibri_explore_plugin.zip
