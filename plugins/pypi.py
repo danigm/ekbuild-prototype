@@ -32,6 +32,7 @@ import json
 from datetime import datetime
 from buildstream import Source, SourceError, utils, Consistency
 
+
 def strip_top_dir(members, attr):
     for member in members:
         path = getattr(member, attr)
@@ -45,6 +46,7 @@ def strip_top_dir(members, attr):
             setattr(member, attr, new_path)
             yield member
 
+
 def make_key(item):
     for download in item[1]:
         if download['packagetype'] == 'sdist':
@@ -53,9 +55,10 @@ def make_key(item):
                                          '%Y-%m-%dT%H:%M:%S.%fZ')
             except ValueError:
                 date = datetime.strptime(download['upload_time_iso_8601'],
-                                             '%Y-%m-%dT%H:%M:%SZ')
+                                         '%Y-%m-%dT%H:%M:%SZ')
             return date
     return datetime.fromtimestamp(0)
+
 
 class PyPISource(Source):
     def configure(self, node):
@@ -70,7 +73,8 @@ class PyPISource(Source):
             raise SourceError(f'{self}: Missing name')
         self.include = self.node_get_member(node, list, 'include', [])
         self.exclude = self.node_get_member(node, list, 'exclude', [])
-        self.index = self.node_get_member(node, str, 'index', 'https://pypi.org/pypi')
+        self.index = self.node_get_member(
+            node, str, 'index', 'https://pypi.org/pypi')
         self.scheme = self.node_get_member(node, str, 'scheme', None)
         if self.scheme is not None:
             self.match_pattern = self.node_get_member(node, str,
@@ -104,14 +108,14 @@ class PyPISource(Source):
         node['url'] = self.original_url = ref['url']
         node['sha256sum'] = self.sha256sum = ref['sha256sum']
 
-
     def track(self):
         payload = json.loads(
             urllib.request.urlopen(f'{self.index}/{self.name}/json').read()
         )
         releases = payload['releases']
         if not releases:
-            raise SourceError(f'{self}: Cannot find any tracking for {self.name}')
+            raise SourceError(
+                f'{self}: Cannot find any tracking for {self.name}')
         selected_release = None
         if self.include or self.exclude:
             includes = list(map(re.compile, self.include))
@@ -137,12 +141,13 @@ class PyPISource(Source):
                 break
 
         if found_ref is None:
-            raise SourceError(f'{self}: Did not find any sdist for {self.name} {selected_release}')
+            raise SourceError(f'{self}: Did not find any sdist for {self.name} {selected_release}')  # noqa: E501
 
         return found_ref
 
     def _calculate_latest(self, releases, includes, excludes):
-        for release, urls in sorted(releases.items(), key=make_key, reverse=True):
+        releases = sorted(releases.items(), key=make_key, reverse=True)
+        for release, urls in releases:
             if excludes:
                 excluded = False
                 for exclude in excludes:
@@ -176,7 +181,8 @@ class PyPISource(Source):
                 request.add_header('Accept', '*/*')
                 request.add_header('User-Agent', 'BuildStream/1')
 
-                with contextlib.closing(urllib.request.urlopen(request)) as response:
+                urlopen = urllib.request.urlopen(request)
+                with contextlib.closing(urlopen) as response:
                     info = response.info()
                     filename = info.get_filename(default_name)
                     filename = os.path.basename(filename)
@@ -191,18 +197,21 @@ class PyPISource(Source):
                 os.rename(local_file, self._get_mirror_file(sha256))
                 return sha256
 
-        except (urllib.error.URLError, urllib.error.ContentTooShortError, OSError) as e:
+        except (urllib.error.URLError,
+                urllib.error.ContentTooShortError, OSError) as e:
             raise SourceError(f"{self}: Error mirroring {self.url}: {e}",
                               temporary=True) from e
 
     def stage(self, directory):
         if not os.path.exists(self._get_mirror_file()):
-            raise SourceError(f"{self}: Cannot find mirror file {self._get_mirror_file()}")
+            raise SourceError(
+                f"{self}: Cannot find mirror file {self._get_mirror_file()}")
         if self.url.endswith('.zip'):
             with zipfile.ZipFile(self._get_mirror_file(), mode='r') as zipf:
-                exec_rights = (stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO) & ~(stat.S_IWGRP | stat.S_IWOTH)
-                noexec_rights = exec_rights & ~(stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-                # Taken from zip plugin. It is needed to ensure reproducibility of permissions
+                exec_rights = (stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO) & ~(stat.S_IWGRP | stat.S_IWOTH)  # noqa: E501
+                noexec_rights = exec_rights & ~(stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)  # noqa: E501
+                # Taken from zip plugin. It is needed to ensure reproducibility
+                # of permissions
                 for member in strip_top_dir(zipf.infolist(), 'filename'):
                     written = zipf.extract(member, path=directory)
                     rel = os.path.relpath(written, start=directory)
@@ -220,7 +229,8 @@ class PyPISource(Source):
                         os.chmod(written, noexec_rights)
         elif self.url.endswith('.gz'):
             with tarfile.open(self._get_mirror_file(), 'r:gz') as tar:
-                tar.extractall(path=directory, members=strip_top_dir(tar.getmembers(), 'path'))
+                tar.extractall(path=directory,
+                               members=strip_top_dir(tar.getmembers(), 'path'))
         else:
             name = f'{self.name}.zip'
             shutil.copy(self._get_mirror_file(), os.path.join(directory, name))
@@ -232,6 +242,7 @@ class PyPISource(Source):
         if os.path.isfile(self._get_mirror_file()):
             return Consistency.CACHED
         return Consistency.RESOLVED
+
 
 def setup():
     return PyPISource
