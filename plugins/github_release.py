@@ -128,7 +128,6 @@ class GithubReleaseSource(Source):
                               temporary=True) from e
 
     def stage(self, directory):
-        self.debug(f'UNZIP: {self.unzip}')
         if self.unzip:
             with zipfile.ZipFile(self._get_mirror_file(), mode='r') as zipf:
                 zipf.extractall(path=directory)
