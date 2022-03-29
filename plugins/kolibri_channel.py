@@ -181,7 +181,7 @@ class KolibriChannelSource(Source):
         if self.channel_id is None or self.version is None:
             return Consistency.INCONSISTENT
 
-        if os.path.isfile(self._get_mirror_dir()):
+        if os.path.isdir(self._get_mirror_dir()):
             return Consistency.CACHED
         return Consistency.RESOLVED
 
