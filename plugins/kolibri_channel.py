@@ -22,10 +22,18 @@ import shutil
 import contextlib
 import urllib.request
 import json
+from dataclasses import dataclass
 from buildstream import Source, SourceError, utils, Consistency
 
 STUDIO = 'https://studio.learningequality.org'
 API = '/api/public/v1/channels/lookup/'
+
+
+@dataclass
+class SourceFile:
+    filename: str
+    path: str
+    dst: str
 
 
 class KolibriChannelSource(Source):
@@ -100,6 +108,30 @@ class KolibriChannelSource(Source):
             with open(local_file, 'wb') as dest:
                 shutil.copyfileobj(response, dest)
 
+    def _get_channel_db(self):
+        mirror = self._get_mirror_dir()
+        databases = os.path.join(mirror, 'databases')
+        return os.path.join(databases, f'{self.channel_id}.sqlite3')
+
+    def _get_channel_files(self):
+        files = []
+        mirror = self._get_mirror_dir()
+        storage = os.path.join(mirror, 'storage')
+
+        with sqlite3.connect(self._get_channel_db()) as db:
+            cur = db.cursor()
+            cur.execute('select id, extension from content_localfile')
+            for row in cur:
+                id = row[0]
+                filename = f'{id}.{row[1]}'
+                path = f'/storage/{id[0]}/{id[1]}/{filename}'
+                dst = os.path.join(storage, id[0], id[1])
+                files.append(SourceFile(filename=filename,
+                                        path=path,
+                                        dst=dst))
+
+        return files
+
     def fetch(self):
         mirror = self._get_mirror_dir()
         databases = os.path.join(mirror, 'databases')
@@ -117,22 +149,14 @@ class KolibriChannelSource(Source):
                 OSError) as e:
             raise SourceError(f"{self}: Error mirroring {path}: {e}") from e
 
-        database = os.path.join(databases, f'{self.channel_id}.sqlite3')
-        with sqlite3.connect(database) as db:
-            cur = db.cursor()
-            cur.execute('select id, extension from content_localfile')
-            for row in cur:
-                id = row[0]
-                filename = f'{id}.{row[1]}'
-                path = f'/storage/{id[0]}/{id[1]}/{filename}'
-                dst = os.path.join(storage, id[0], id[1])
-
-                try:
-                    self._download_content(path, dst)
-                except (urllib.error.URLError,
-                        urllib.error.ContentTooShortError,
-                        OSError) as e:
-                    raise SourceError(f"{self}: Error mirroring {path}: {e}") from e
+        files = self._get_channel_files()
+        for f in files:
+            try:
+                self._download_content(f.path, f.dst)
+            except (urllib.error.URLError,
+                    urllib.error.ContentTooShortError,
+                    OSError) as e:
+                raise SourceError(f"{self}: Error mirroring {f.path}: {e}") from e
 
     def stage(self, directory):
         mirror = self._get_mirror_dir()
@@ -143,25 +167,21 @@ class KolibriChannelSource(Source):
         if not os.path.exists(dbdir):
             os.makedirs(dbdir)
 
-        database = os.path.join(databases, f'{self.channel_id}.sqlite3')
-        shutil.copy(database, dbdir)
+        shutil.copy(self._get_channel_db(), dbdir)
 
-        self.debug(storage)
         for root, dirs, files in os.walk(storage):
             for name in files:
-                self.debug(name)
                 file = os.path.join(storage, name[0], name[1], name)
                 dst = os.path.join(directory, 'storage', name[0], name[1])
                 if not os.path.exists(dst):
                     os.makedirs(dst)
-                shutil.copy(database, dst)
+                shutil.copy(file, dst)
 
     def get_consistency(self):
         if self.channel_id is None or self.version is None:
             return Consistency.INCONSISTENT
 
-
-        if os.path.isdir(self._get_mirror_dir()):
+        if os.path.isfile(self._get_mirror_dir()):
             return Consistency.CACHED
         return Consistency.RESOLVED
 
