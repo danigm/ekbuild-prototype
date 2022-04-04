@@ -25,7 +25,7 @@ import json
 from dataclasses import dataclass
 from buildstream import Source, SourceError, utils, Consistency
 
-STUDIO = 'https://studio.learningequality.org'
+STUDIO = 'https://kolibri-content.endlessos.org'
 API = '/api/public/v1/channels/lookup/'
 
 
@@ -108,17 +108,17 @@ class KolibriChannelSource(Source):
             with open(local_file, 'wb') as dest:
                 shutil.copyfileobj(response, dest)
 
-    def _get_channel_db(self):
-        mirror = self._get_mirror_dir()
+    def _get_channel_db(self, channel_id, version):
+        mirror = self._get_mirror_dir(channel_id, version)
         databases = os.path.join(mirror, 'databases')
-        return os.path.join(databases, f'{self.channel_id}.sqlite3')
+        return os.path.join(databases, f'{channel_id}.sqlite3')
 
-    def _get_channel_files(self):
+    def _get_channel_files(self, channel_id, version):
         files = []
-        mirror = self._get_mirror_dir()
+        mirror = self._get_mirror_dir(channel_id, version)
         storage = os.path.join(mirror, 'storage')
 
-        with sqlite3.connect(self._get_channel_db()) as db:
+        with sqlite3.connect(self._get_channel_db(channel_id, version)) as db:
             cur = db.cursor()
             cur.execute('select id, extension from content_localfile')
             for row in cur:
@@ -132,16 +132,13 @@ class KolibriChannelSource(Source):
 
         return files
 
-    def fetch(self):
-        mirror = self._get_mirror_dir()
+    def _fetch_db(self, channel_id, version):
+        mirror = self._get_mirror_dir(channel_id, version)
         databases = os.path.join(mirror, 'databases')
-        storage = os.path.join(mirror, 'storage')
         if not os.path.isdir(databases):
             os.makedirs(databases)
-        if not os.path.isdir(storage):
-            os.makedirs(storage)
 
-        path = f'/databases/{self.channel_id}.sqlite3'
+        path = f'/databases/{channel_id}.sqlite3'
         try:
             self._download_content(path, databases)
         except (urllib.error.URLError,
@@ -149,7 +146,12 @@ class KolibriChannelSource(Source):
                 OSError) as e:
             raise SourceError(f"{self}: Error mirroring {path}: {e}") from e
 
-        files = self._get_channel_files()
+    def _fetch_files(self, channel_id, version):
+        mirror = self._get_mirror_dir(channel_id, version)
+        storage = os.path.join(mirror, 'storage')
+        if not os.path.isdir(storage):
+            os.makedirs(storage)
+        files = self._get_channel_files(channel_id, version)
         for f in files:
             try:
                 self._download_content(f.path, f.dst)
@@ -158,16 +160,24 @@ class KolibriChannelSource(Source):
                     OSError) as e:
                 raise SourceError(f"{self}: Error mirroring {f.path}: {e}") from e
 
-    def stage(self, directory):
-        mirror = self._get_mirror_dir()
+
+    def fetch(self):
+        self._fetch_db(self.channel_id, self.version)
+        self._fetch_files(self.channel_id, self.version)
+
+    def _stage_db(self, directory, channel_id, version):
+        mirror = self._get_mirror_dir(channel_id, version)
         databases = os.path.join(mirror, 'databases')
-        storage = os.path.join(mirror, 'storage')
 
         dbdir = os.path.join(directory, 'databases')
         if not os.path.exists(dbdir):
             os.makedirs(dbdir)
 
-        shutil.copy(self._get_channel_db(), dbdir)
+        shutil.copy(self._get_channel_db(channel_id, version), dbdir)
+
+    def _stage_files(self, directory, channel_id, version):
+        mirror = self._get_mirror_dir(channel_id, version)
+        storage = os.path.join(mirror, 'storage')
 
         for root, dirs, files in os.walk(storage):
             for name in files:
@@ -177,18 +187,23 @@ class KolibriChannelSource(Source):
                     os.makedirs(dst)
                 shutil.copy(file, dst)
 
+    def stage(self, directory):
+        self._stage_db(directory, self.channel_id, self.version)
+        self._stage_files(directory, self.channel_id, self.version)
+
     def get_consistency(self):
         if self.channel_id is None or self.version is None:
             return Consistency.INCONSISTENT
 
-        if os.path.isdir(self._get_mirror_dir()):
+        mirrordir = self._get_mirror_dir(self.channel_id, self.version)
+        if os.path.isdir(mirrordir):
             return Consistency.CACHED
         return Consistency.RESOLVED
 
-    def _get_mirror_dir(self):
+    def _get_mirror_dir(self, channel_id, channel_version):
         return os.path.join(self.get_mirror_directory(),
                             utils.url_directory_name(self.name),
-                            f'{self.channel_id}.{self.version}')
+                            f'{channel_id}.{channel_version}')
 
 
 def setup():
